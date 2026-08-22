@@ -46,6 +46,15 @@ namespace SiPV.AssetLoader
             catch (Exception ex)
             {
                 completionSource.TrySetException(ex);
+                
+                try
+                {
+                    completionSource.Task.GetAwaiter().GetResult();
+                }
+                catch
+                {
+                }
+
                 throw;
             }
             finally

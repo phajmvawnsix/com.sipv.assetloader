@@ -9,5 +9,8 @@ namespace SiPV.AssetLoader
     {
         // Runs the pipeline for one request, returns a ref-counted handle.
         UniTask<AssetHandle<T>> ExecuteAsync<T>(AssetRequest request, CancellationToken cancellationToken);
+
+        // Warms the disk tier only - no T to decode into, so no decode/RAM-cache step.
+        UniTask PreloadAsync(AssetRequest request, CancellationToken cancellationToken);
     }
 }

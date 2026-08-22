@@ -4,17 +4,22 @@ Runtime/, they're small, read them there.
 
 STATE
 
-Contracts only. Nothing loads yet.
+First real load path exists. AssetLoaderService (IAssetLoader) wraps
+AssetLoadPipeline (internal orchestrator) and InFlightRequestCoordinator (dedup).
+Both real, not fakes - dedup logic isn't IO, no reason to defer it.
 
-Written: AssetHandle, AssetDecoderRegistry, ContentProcessorPipeline, Config +
-Builder, the facade, loggers/sinks.
-Not written: source, both cache tiers, metadata store, key provider, all three
-policies, pipeline, dedup coordinator, IAssetLoader itself.
+Still fakes-only in tests, still no real implementation in Runtime/: source,
+both cache tiers, metadata store, key provider, all three policies. Pipeline
+calls all of them through the interfaces; nothing backing those interfaces for
+real yet.
 
-Seams first was deliberate. The costly mistakes here are who owns the ref count and
-who owns thread affinity, not the method bodies.
-
-Tests are an empty placeholder. Nothing has run on device.
+Tests are 8 EditMode cases against the pipeline with fakes for every
+dependency - RAM hit, disk hit fresh, disk hit stale+revalidate, full miss,
+missing decoder, mid-flight cancellation, concurrent dedup, and the two edge
+cases the code review below caught. Compiles clean (0 error CS, verified
+against Unity's own Editor.log after a real domain reload + Bee build). Have
+not run Test Runner itself - no headless hook into this Unity instance from
+here, so "compiles" is confirmed, "passes" isn't yet.
 
 
 FLOW
@@ -27,19 +32,42 @@ Main thread in, main thread out.
 Cache seed comes from AssetRequest.ResolveCacheSeed(). RAM keys off it verbatim, disk
 hashes it. Policy decides Fresh (read disk, skip to process) / StaleRevalidate
 (conditional GET) / Miss (full fetch). 304 means reuse disk bytes, just bump the
-timestamps.
+timestamps - and now actually does bump them on the Fresh path too, not just
+StaleRevalidate (see DECISIONS, this was a real bug caught in review).
 
-Retry sits per stage, not around the whole thing, hence RetryStage.
+Retry sits per stage, not around the whole thing, hence RetryStage. Timeout is read
+once per call (not re-asked between retries) and reapplied fresh each attempt via a
+linked CancellationTokenSource - so retries actually get their own budget instead of
+sharing one deadline that a slow first attempt already ate into.
 
-Complete(ramKey) must be in a finally covering the failure path. Miss it and the key
-stays wedged in-flight forever, every later load of it awaiting a source that never
-resolves. Most likely bug in the whole design.
+Complete(ramKey) runs in a finally covering the failure path - implemented, and the
+cancellation test proves a wedged key doesn't happen: cancel mid-fetch, then load the
+same key again and it goes through a normal fetch instead of hanging. This was flagged
+as "most likely bug in the whole design" before it existed; now it's just a test.
+
+Preload has no <T>, so it can't decode or touch RAM cache - it stops after warming the
+disk tier. Duplicates a chunk of the disk-side logic from the main path rather than
+sharing it; acceptable for now, revisit if it drifts.
 
 Release doesn't evict. Count hits zero, entry just becomes eligible; TrimToBudget
 sweeps LRU over zero-ref entries later.
 
 
 DECISIONS
+
+IRamCache.Put now returns AssetHandle<T> instead of void. Original contract had Put
+return nothing and expected the pipeline to call TryGet right after to obtain a handle
+- but TryGet's job is to bump the ref count on a hit, so calling it immediately after
+Put would double-count: one ref from Put, one more from the follow-up TryGet, with only
+one handle object ever handed to anyone. Permanent per-entry leak, every single load.
+Caught while actually wiring the pipeline together, not before. Put now hands back the
+ref-count-1 handle directly.
+
+InFlightRequestCoordinator written for real in this step, not deferred to the dedup
+step like the master plan originally split it. It's pure in-memory bookkeeping
+(dictionary + completion sources), not IO, and the pipeline has nowhere to call for
+that step of the sequence without it. The plan's split was by feature area (dedup as a
+topic), not by what's actually blocked on IO - those aren't the same axis.
 
 Ref counting, not GC. A Texture2D bound to a live material must not be destroyed and
 the cache can't know that. Caller does. Costs us leaks when someone forgets Release().
@@ -58,13 +86,17 @@ and rotating the key doesn't invalidate the cache.
 
 Content and metadata in separate stores so either can change independently. Price is
 every write/evict needs its counterpart call or they drift. First thing to check when
-disk behaviour goes odd.
+disk behaviour goes odd - and it did: a 304 response blindly trusted the disk cache to
+still have the bytes it thought it had. Fixed to check DiskCacheReadResult.Found and
+fail loudly instead of feeding null bytes into the decoder.
 
 Dedup is its own object. "Is it cached" and "is it in flight" are different questions
 and folding them into the RAM cache mixes them up.
 
 Pipeline owns thread affinity, layers stay naive. Processors on the pool, source on
-main (UnityWebRequest), decoders may start off-thread but must return on main.
+main (UnityWebRequest), decoders may start off-thread but must return on main. Now
+covered by a test that asserts the actual thread ID RamCache.Put and IAssetSource were
+called from, not just "seems right" from reading the code.
 
 Policies split three ways with per-request overrides, so a first-run download can retry
 hard without touching global config.
@@ -79,6 +111,15 @@ throws instead of lazily inventing a default.
 
 OPEN
 
+- No server Last-Modified field on CacheEntryMetadata. AssetSourceRequestContext has a
+  LastModifiedIfKnown slot for sources that don't do ETag, but there's nowhere to
+  persist what the server actually sent - pipeline always passes null for it right now.
+  Needs a field added when the HTTP source step needs it, or the field gets deleted as
+  dead weight.
+- A source answering 304 with no known prior metadata (BypassDiskCache set, or a source
+  that ignores the flag and caches independently) now throws AssetLoadException instead
+  of an NRE - but it's still just "give up", not "fall back to treating it as a fresh
+  fetch". Fine for now, a source doing this is arguably buggy on its own.
 - IsFresh treats null MaxAge as never fresh. If the CDN omits Cache-Control we'd
   conditional-GET every single load. Check the real headers before writing the default
   policy.
@@ -89,3 +130,4 @@ OPEN
 - ResolveCacheSeed allocates per call, RAM hit path included. Only fix if a profile says so.
 - Cache budgets: no numbers yet, needs a device profile.
 - App backgrounds mid-fetch, then what?
+- Haven't actually run Test Runner. Compiling clean isn't the same claim as passing.

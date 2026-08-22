@@ -7,8 +7,9 @@ namespace SiPV.AssetLoader
     {
         bool TryGet<T>(string ramKey, out AssetHandle<T> handle);
 
-        // ref count starts at 1; the pipeline hands that first handle to the caller, not this method
-        void Put<T>(string ramKey, T asset, CacheEntryMetadata metadata);
+        // returns the new entry's handle at ref count 1, already owned by the caller - no follow-up
+        // TryGet needed (that would double-count the ref)
+        AssetHandle<T> Put<T>(string ramKey, T asset, CacheEntryMetadata metadata);
 
         // unconditional, ignores ref count - for explicit invalidation, not routine eviction
         void Evict(string ramKey);

@@ -2,12 +2,12 @@ using System;
 
 namespace SiPV.AssetLoader
 {
-    // Ref-counted wrapper around a loaded asset. No finalizer cleanup - must call Release/Dispose or the
-    // underlying UnityEngine.Object leaks in the RAM cache. Release must happen on the main thread only:
-    // hitting zero calls back into IRamCache's eviction, which isn't thread-safe. Double-release is a
-    // no-op (not an exception), kept defensive so a stray double-release doesn't crash the app.
-    // TODO: the Gate lock is belt-and-braces given the main-thread rule above - either drop it or drop the
-    // rule, having both just makes people think off-thread Release is supported.
+    // Ref-counted wrapper around a loaded asset. No finalizer cleanup - must call Release/Dispose or
+    // the underlying UnityEngine.Object leaks in the RAM cache. All mutation (Retain/Release) and
+    // RamCache access is confined to the main thread by contract, so no locking here - a
+    // previous version had a lock alongside this same main-thread rule, which was worse than either
+    // alone since it implied off-thread Release was supported. Double-release is a no-op that logs a
+    // warning rather than throwing, so a stray extra Release doesn't crash a shipped build.
     public sealed class AssetHandle<T> : IDisposable
     {
         private sealed class SharedState
@@ -16,14 +16,14 @@ namespace SiPV.AssetLoader
             public string Key;
             public int RefCount;
             public Action<string> OnFullyReleased;
-            public readonly object Gate = new object();
         }
 
         private readonly SharedState _state;
+        private readonly IAssetLoaderLogger _logger;
         private bool _releasedByThisInstance;
 
         // onFullyReleased fires once, when ref count drops to 0, so the cache tier can evict.
-        internal AssetHandle(string key, T asset, Action<string> onFullyReleased)
+        internal AssetHandle(string key, T asset, Action<string> onFullyReleased, IAssetLoaderLogger logger = null)
         {
             _state = new SharedState
             {
@@ -32,68 +32,70 @@ namespace SiPV.AssetLoader
                 RefCount = 1,
                 OnFullyReleased = onFullyReleased
             };
+            _logger = logger;
         }
 
-        private AssetHandle(SharedState state)
+        private AssetHandle(SharedState state, IAssetLoaderLogger logger)
         {
             _state = state;
+            _logger = logger;
         }
+        
+        public T Asset
+        {
+            get
+            {
+                if (_releasedByThisInstance)
+                {
+                    throw new ObjectDisposedException(
+                        $"AssetHandle<{typeof(T).Name}>", $"Handle for key '{_state.Key}' was already released.");
+                }
 
-        // Only safe to touch while IsValid is true.
-        public T Asset => _state.Asset;
+                return _state.Asset;
+            }
+        }
 
         public string Key => _state.Key;
 
-        public bool IsValid
-        {
-            get { lock (_state.Gate) return _state.RefCount > 0; }
-        }
+        public bool IsValid => _state.RefCount > 0;
 
-        public int RefCount
-        {
-            get { lock (_state.Gate) return _state.RefCount; }
-        }
+        public int RefCount => _state.RefCount;
 
         // Bumps ref count, returns a new handle instance sharing the same count (each instance
         // released independently/once). Throws if already fully released - nothing left to retain.
         public AssetHandle<T> Retain()
         {
-            lock (_state.Gate)
+            if (_state.RefCount <= 0)
             {
-                if (_state.RefCount <= 0)
-                {
-                    throw new InvalidOperationException(
-                        $"Cannot retain AssetHandle<{typeof(T).Name}> for key '{_state.Key}': already fully released.");
-                }
-
-                _state.RefCount++;
+                throw new InvalidOperationException(
+                    $"Cannot retain AssetHandle<{typeof(T).Name}> for key '{_state.Key}': already fully released.");
             }
 
-            return new AssetHandle<T>(_state);
+            _state.RefCount++;
+            return new AssetHandle<T>(_state, _logger);
         }
 
         public void Release()
         {
             if (_releasedByThisInstance)
             {
+                _logger?.LogWarning(
+                    $"AssetHandle<{typeof(T).Name}> for key '{_state.Key}' released more than once by the same instance; ignored.");
                 return;
             }
 
             _releasedByThisInstance = true;
 
-            lock (_state.Gate)
+            if (_state.RefCount <= 0)
             {
-                if (_state.RefCount <= 0)
-                {
-                    return;
-                }
+                return;
+            }
 
-                _state.RefCount--;
+            _state.RefCount--;
 
-                if (_state.RefCount == 0)
-                {
-                    _state.OnFullyReleased?.Invoke(_state.Key);
-                }
+            if (_state.RefCount == 0)
+            {
+                _state.OnFullyReleased?.Invoke(_state.Key);
             }
         }
 

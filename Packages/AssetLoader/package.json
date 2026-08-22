@@ -1,0 +1,22 @@
+{
+  "name": "com.sipv.assetloader",
+  "version": "0.1.0",
+  "displayName": "Asset Loader",
+  "description": "Reusable, performant, extensible runtime asset loading library for Unity. RAM/disk caching, request dedup, pluggable sources/decoders/processors/policies.",
+  "unity": "2022.3",
+  "license": "Apache-2.0",
+  "keywords": [
+    "asset",
+    "loader",
+    "cache",
+    "runtime"
+  ],
+  "author": {
+    "name": "SiPV"
+  },
+  "dependencies": {
+    "com.cysharp.unitask": "2.5.10",
+    "com.sipvlib.event": "https://github.com/phajmvawnsix/com.sipvlib.event.git",
+    "com.sipvlib.debugging": "https://github.com/phajmvawnsix/com.sipvlib.debugging.git"
+  }
+}

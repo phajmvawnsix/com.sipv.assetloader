@@ -1,0 +1,91 @@
+Notes on decisions the code can't explain by itself. Types and fields are in
+Runtime/, they're small, read them there.
+
+
+STATE
+
+Contracts only. Nothing loads yet.
+
+Written: AssetHandle, AssetDecoderRegistry, ContentProcessorPipeline, Config +
+Builder, the facade, loggers/sinks.
+Not written: source, both cache tiers, metadata store, key provider, all three
+policies, pipeline, dedup coordinator, IAssetLoader itself.
+
+Seams first was deliberate. The costly mistakes here are who owns the ref count and
+who owns thread affinity, not the method bodies.
+
+Tests are an empty placeholder. Nothing has run on device.
+
+
+FLOW
+
+keys -> dedup -> RAM -> disk+freshness -> fetch -> persist raw -> process -> decode
+-> put in RAM, return handle
+
+Main thread in, main thread out.
+
+Cache seed comes from AssetRequest.ResolveCacheSeed(). RAM keys off it verbatim, disk
+hashes it. Policy decides Fresh (read disk, skip to process) / StaleRevalidate
+(conditional GET) / Miss (full fetch). 304 means reuse disk bytes, just bump the
+timestamps.
+
+Retry sits per stage, not around the whole thing, hence RetryStage.
+
+Complete(ramKey) must be in a finally covering the failure path. Miss it and the key
+stays wedged in-flight forever, every later load of it awaiting a source that never
+resolves. Most likely bug in the whole design.
+
+Release doesn't evict. Count hits zero, entry just becomes eligible; TrimToBudget
+sweeps LRU over zero-ref entries later.
+
+
+DECISIONS
+
+Ref counting, not GC. A Texture2D bound to a live material must not be destroyed and
+the cache can't know that. Caller does. Costs us leaks when someone forgets Release().
+Accepted, because the alternative was a finalizer calling into the cache from the GC
+thread, which is worse than the leak.
+
+Double Release is a no-op, not a throw. A stray extra Release in some teardown path
+shouldn't kill a shipped build.
+
+RAM key raw, disk key hashed. Raw is readable in a debugger and in logs. Disk can't be:
+seeds are URLs, and mobile filesystems break on the length and characters URLs use
+freely.
+
+Disk stores bytes pre-processing. Encrypted projects keep the encrypted form at rest,
+and rotating the key doesn't invalidate the cache.
+
+Content and metadata in separate stores so either can change independently. Price is
+every write/evict needs its counterpart call or they drift. First thing to check when
+disk behaviour goes odd.
+
+Dedup is its own object. "Is it cached" and "is it in flight" are different questions
+and folding them into the RAM cache mixes them up.
+
+Pipeline owns thread affinity, layers stay naive. Processors on the pool, source on
+main (UnityWebRequest), decoders may start off-thread but must return on main.
+
+Policies split three ways with per-request overrides, so a first-run download can retry
+hard without touching global config.
+
+One exception + error code. Callers branch on "network or corrupt", they don't want six
+catch blocks.
+
+Builder throws on missing mandatory slots at Build(). Catches the forgotten source at
+bootstrap, not on a cache miss in front of a player. Same reason the static facade
+throws instead of lazily inventing a default.
+
+
+OPEN
+
+- IsFresh treats null MaxAge as never fresh. If the CDN omits Cache-Control we'd
+  conditional-GET every single load. Check the real headers before writing the default
+  policy.
+- TryResolve calls CanDecode twice per candidate, and extension can beat content type.
+  Content type should win. Revisit when two decoders actually compete.
+- AssetHandle has a lock AND a main-thread-only rule. Implies off-thread Release works.
+  It doesn't. Drop one.
+- ResolveCacheSeed allocates per call, RAM hit path included. Only fix if a profile says so.
+- Cache budgets: no numbers yet, needs a device profile.
+- App backgrounds mid-fetch, then what?

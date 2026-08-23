@@ -18,5 +18,22 @@
     "com.cysharp.unitask": "2.5.10",
     "com.sipvlib.event": "https://github.com/phajmvawnsix/com.sipvlib.event.git",
     "com.sipvlib.debugging": "https://github.com/phajmvawnsix/com.sipvlib.debugging.git"
-  }
+  },
+  "samples": [
+    {
+      "displayName": "Custom Loader",
+      "description": "Registers a decoder for a made-up asset type from outside the package, proving Open/Closed extensibility.",
+      "path": "Samples~/CustomLoaderSample"
+    },
+    {
+      "displayName": "Custom Decrypt",
+      "description": "Adds an XOR content processor to the fetch/decode chain (production should use AES).",
+      "path": "Samples~/CustomDecryptSample"
+    },
+    {
+      "displayName": "Custom Policy",
+      "description": "A single-retry-no-backoff IRetryPolicy, usable globally or per-request.",
+      "path": "Samples~/CustomPolicySample"
+    }
+  ]
 }

@@ -7,10 +7,29 @@ using UnityEngine.Networking;
 
 namespace SiPV.AssetLoader
 {
-    // Built-in decoder for AudioClip, via UnityWebRequestMultimedia - no external library needed,
-    // it's part of UnityEngine.Networking same as HttpAssetSource's transport.
+    /// <summary>Decodes WAV, OGG, or MP3 bytes into an <see cref="AudioClip"/>.</summary>
+    /// <remarks>
+    /// <para>
+    /// Uses <see cref="UnityWebRequestMultimedia"/>, part of <c>UnityEngine.Networking</c> like
+    /// <see cref="HttpAssetSource"/>'s own transport, so no external decode library is needed.
+    /// Matches <c>audio/*</c> content types and the <c>wav</c>, <c>ogg</c>, and <c>mp3</c>
+    /// extensions.
+    /// </para>
+    /// <para>
+    /// <see cref="UnityWebRequestMultimedia"/> only reads from a URI, not from an in-memory
+    /// buffer, so the processed bytes are written to a temp file under
+    /// <see cref="Application.temporaryCachePath"/> first and deleted again in a
+    /// <c>finally</c> block regardless of success, failure, or cancellation.
+    /// </para>
+    /// <para>
+    /// <c>AudioType.MPEG</c> decode support is inconsistent across platforms per Unity's own
+    /// documentation: verify mp3 playback on every target platform rather than assuming desktop
+    /// or Editor behavior carries over.
+    /// </para>
+    /// </remarks>
     public sealed class AudioClipDecoder : IAssetDecoder<AudioClip>
     {
+        /// <inheritdoc />
         public bool CanDecode(Type targetType, string contentTypeOrExtension)
         {
             if (targetType != typeof(AudioClip) || string.IsNullOrEmpty(contentTypeOrExtension))
@@ -22,6 +41,7 @@ namespace SiPV.AssetLoader
             return value == "wav" || value == "ogg" || value == "mp3" || value.StartsWith("audio/");
         }
 
+        /// <inheritdoc />
         public async UniTask<AudioClip> DecodeAsync(byte[] processedBytes, AssetDecodeContext context, CancellationToken cancellationToken)
         {
             await UniTask.SwitchToMainThread(cancellationToken);

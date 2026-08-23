@@ -3,13 +3,23 @@ using System.Text;
 
 namespace SiPV.AssetLoader
 {
-    // Default ICacheKeyProvider. RAM key is the raw seed (readable in a debugger). Disk key is
-    // SHA256 hex of the same seed - mobile filesystems break on the length/characters a raw URL
-    // can contain, a fixed-length hash never does.
+    /// <summary>
+    /// Keys straight off the request's cache seed: raw for RAM, SHA256 hex for disk.
+    /// </summary>
+    /// <remarks>
+    /// The RAM key stays raw because it is only ever a dictionary key, and a readable one is far
+    /// easier to follow in a debugger or a log. The disk key must survive being a filename on every
+    /// target platform, which a raw URL does not: mobile filesystems reject characters URLs use
+    /// freely and impose path length limits URLs routinely exceed. A fixed-length hash sidesteps
+    /// both. Subclass or replace this to add cache-busting, for example prefixing the seed with an
+    /// app or content version so a release invalidates everything at once.
+    /// </remarks>
     public sealed class DefaultCacheKeyProvider : ICacheKeyProvider
     {
+        /// <inheritdoc />
         public string GetRamKey(in AssetRequest request) => request.ResolveCacheSeed();
 
+        /// <inheritdoc />
         public string GetDiskKey(in AssetRequest request)
         {
             var seed = request.ResolveCacheSeed();

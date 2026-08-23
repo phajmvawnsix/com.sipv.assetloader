@@ -1,14 +1,15 @@
 namespace SiPV.AssetLoader
 {
-    // Outcome of an IAssetSource fetch attempt.
+    /// <summary>Outcome of an <see cref="IAssetSource"/> fetch attempt.</summary>
     public enum AssetSourceStatus
     {
-        // full content returned (unconditional GET, or conditional GET where content changed)
+        /// <summary>Full content returned, either an unconditional GET or a conditional GET where the content changed.</summary>
         Ok200,
 
-        // cached ETag/Last-Modified still valid, no body returned
+        /// <summary>The cached ETag or Last-Modified value is still valid; no body was returned.</summary>
         NotModified304,
 
+        /// <summary>The fetch failed; see <see cref="AssetSourceResult.Error"/>.</summary>
         Failed
     }
 }

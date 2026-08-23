@@ -7,9 +7,8 @@ using UnityEngine.TestTools;
 
 namespace SiPV.AssetLoader.Tests
 {
-    // Partial-vs-all-waiter cancellation semantics for dedup coalescing - confirmed decision this
-    // step: the shared fetch only actually cancels once every currently-interested caller has
-    // cancelled their own token. See docs/step-07-dedup-policies.md for the full reasoning.
+    // Partial-vs-all-waiter cancellation semantics for dedup coalescing: the shared fetch only
+    // actually cancels once every currently-interested caller has cancelled their own token.
     public class DedupCancellationTests
     {
         [UnityTest]

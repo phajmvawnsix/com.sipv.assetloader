@@ -5,15 +5,26 @@ using Cysharp.Threading.Tasks;
 
 namespace SiPV.AssetLoader
 {
+    /// <summary>Default <see cref="IAssetSource"/>: fetches over HTTP via an injected <see cref="IHttpClient"/>.</summary>
+    /// <remarks>
+    /// Owns the conditional-GET and <c>Cache-Control</c> parsing: sends <c>If-None-Match</c> or
+    /// <c>If-Modified-Since</c> when the context carries them, and interprets the response's
+    /// <c>ETag</c>/<c>Cache-Control</c> headers into <see cref="AssetSourceResult"/>. A response
+    /// carrying <c>Cache-Control: no-store</c> is returned with a null ETag and zero max-age so
+    /// the caller does not persist it as revalidatable.
+    /// </remarks>
     public sealed class HttpAssetSource : IAssetSource
     {
         private readonly IHttpClient _httpClient;
 
+        /// <summary>Creates an HTTP asset source over the given client.</summary>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="httpClient"/> is null.</exception>
         public HttpAssetSource(IHttpClient httpClient)
         {
             _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         }
 
+        /// <inheritdoc />
         public async UniTask<AssetSourceResult> FetchAsync(AssetSourceRequestContext context, CancellationToken cancellationToken)
         {
             var request = new HttpRequestMessage(context.Url, BuildRequestHeaders(context));

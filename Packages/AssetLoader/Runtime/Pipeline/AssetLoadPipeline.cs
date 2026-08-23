@@ -233,7 +233,7 @@ namespace SiPV.AssetLoader
                 var context = new AssetSourceRequestContext(
                     request.Url,
                     existingMetadata?.ETag,
-                    null, // no server Last-Modified field on CacheEntryMetadata yet
+                    null, // CacheEntryMetadata doesn't persist a server Last-Modified field, ETag is the only revalidation path
                     request.CustomHeaders,
                     request.TimeoutPolicyOverride ?? _config.DefaultTimeoutPolicy,
                     request.Priority);

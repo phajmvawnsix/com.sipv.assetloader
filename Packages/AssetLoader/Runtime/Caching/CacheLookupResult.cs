@@ -1,15 +1,18 @@
 namespace SiPV.AssetLoader
 {
-    // Cache policy decision for a lookup.
+    /// <summary>What <see cref="ICachePolicy.Evaluate"/> decided about a cached entry.</summary>
     public enum CacheLookupResult
     {
-        // within max-age, serve directly
+        /// <summary>Still within its lifetime. Serve the cached bytes without contacting the source.</summary>
         Fresh,
 
-        // stale, needs a conditional GET to check for a 304
+        /// <summary>
+        /// Cached but past its lifetime. The pipeline sends a conditional request; a 304 reuses the
+        /// cached bytes and only refreshes timestamps, anything else replaces them.
+        /// </summary>
         StaleRevalidate,
 
-        // nothing usable, full fetch needed
+        /// <summary>Nothing usable cached. Fetch in full.</summary>
         Miss
     }
 }

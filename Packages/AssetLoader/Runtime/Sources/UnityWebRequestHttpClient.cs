@@ -5,9 +5,11 @@ using UnityEngine.Networking;
 
 namespace SiPV.AssetLoader
 {
-    // Default IHttpClient, backed by UnityWebRequest.
+    /// <summary>Default <see cref="IHttpClient"/>, backed by <c>UnityWebRequest</c>.</summary>
+    /// <remarks>Must be called on the main thread; <c>UnityWebRequest</c> cannot be driven from the thread pool.</remarks>
     public sealed class UnityWebRequestHttpClient : IHttpClient
     {
+        /// <inheritdoc />
         public async UniTask<HttpResponse> GetAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             using var webRequest = UnityWebRequest.Get(request.Url);

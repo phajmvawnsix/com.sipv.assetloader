@@ -5,10 +5,17 @@ using UnityEngine;
 
 namespace SiPV.AssetLoader
 {
-    // Built-in decoder for Texture2D. Texture2D.LoadImage is a UnityEngine API call, must run on main thread -
-    // the pipeline may start decoding off-thread but is required to bring this call back to main thread first.
+    /// <summary>Decodes PNG or JPEG bytes into a <see cref="Texture2D"/>.</summary>
+    /// <remarks>
+    /// Matches <c>image/*</c> content types and the <c>png</c>, <c>jpg</c>, and <c>jpeg</c>
+    /// extensions. <c>Texture2D.LoadImage</c> is a UnityEngine call and cannot run off the main
+    /// thread, so this switches back before touching it: expect the decode to cost main-thread
+    /// frame time proportional to image size. On unparseable bytes it destroys the partially
+    /// created texture and throws rather than returning one with undefined contents.
+    /// </remarks>
     public sealed class Texture2DDecoder : IAssetDecoder<Texture2D>
     {
+        /// <inheritdoc />
         public bool CanDecode(Type targetType, string contentTypeOrExtension)
         {
             if (targetType != typeof(Texture2D) || string.IsNullOrEmpty(contentTypeOrExtension))
@@ -20,6 +27,7 @@ namespace SiPV.AssetLoader
             return value.StartsWith("image/") || value == "png" || value == "jpg" || value == "jpeg";
         }
 
+        /// <inheritdoc />
         public async UniTask<Texture2D> DecodeAsync(byte[] processedBytes, AssetDecodeContext context, CancellationToken cancellationToken)
         {
             await UniTask.SwitchToMainThread(cancellationToken);

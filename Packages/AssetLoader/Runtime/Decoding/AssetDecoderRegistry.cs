@@ -3,12 +3,20 @@ using System.Collections.Generic;
 
 namespace SiPV.AssetLoader
 {
-    // Default IAssetDecoderRegistry. Not thread-safe - registration is at bootstrap, resolution during
-    // pipeline execution, both main-thread only.
+    /// <summary>
+    /// Type-keyed decoder registry where later registrations take precedence.
+    /// </summary>
+    /// <remarks>
+    /// Not thread-safe, and does not need to be: registration happens at bootstrap and resolution
+    /// during pipeline execution, both on the main thread. Candidates for a type are searched
+    /// newest-first, so registering your own decoder after a built-in one overrides it.
+    /// </remarks>
     public sealed class AssetDecoderRegistry : IAssetDecoderRegistry
     {
         private readonly Dictionary<Type, List<object>> _decodersByType = new Dictionary<Type, List<object>>();
 
+        /// <inheritdoc />
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="decoder"/> is null.</exception>
         public void Register<T>(IAssetDecoder<T> decoder)
         {
             if (decoder == null)
@@ -27,6 +35,7 @@ namespace SiPV.AssetLoader
             list.Insert(0, decoder);
         }
 
+        /// <inheritdoc />
         public bool TryResolve<T>(string contentType, string extension, out IAssetDecoder<T> decoder)
         {
             decoder = null;

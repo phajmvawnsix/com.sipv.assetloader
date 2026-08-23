@@ -1,0 +1,17 @@
+{
+    "name": "SiPV.AssetLoader.Samples.Demo",
+    "rootNamespace": "SiPV.AssetLoader.Samples.Demo",
+    "references": [
+        "SiPV.AssetLoader",
+        "UniTask"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

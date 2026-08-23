@@ -3,7 +3,23 @@ using System.Collections.Generic;
 
 namespace SiPV.AssetLoader
 {
-    // Default IRamCache. Synchronous, main-thread-only, no locks
+    /// <summary>
+    /// In-memory asset cache with ref-counted entries and least-recently-used eviction among
+    /// unreferenced ones.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Synchronous, main-thread-only, and deliberately lock-free. Confining access to the main
+    /// thread is what makes locking unnecessary, and it costs nothing in practice since the assets
+    /// held here are Unity objects that can only be used from the main thread anyway.
+    /// </para>
+    /// <para>
+    /// An entry that drops to zero references is not destroyed immediately: it stays cached and
+    /// reusable until an eviction sweep reclaims it, so a load-release-reload cycle still hits the
+    /// cache. Reusing such an entry mints a fresh handle generation rather than resurrecting the
+    /// spent one, which keeps the ref count an accurate reflection of real callers.
+    /// </para>
+    /// </remarks>
     public sealed class RamCache : IRamCache
     {
         private sealed class CacheEntry
@@ -24,6 +40,19 @@ namespace SiPV.AssetLoader
         private readonly int? _maxEntries;
         private readonly long? _maxBytes;
 
+        /// <summary>Creates a RAM cache.</summary>
+        /// <param name="sizeEstimator">Sizes assets for the byte budget.</param>
+        /// <param name="releaser">Destroys assets once evicted.</param>
+        /// <param name="maxEntries">Entry-count ceiling, or null for no limit.</param>
+        /// <param name="maxBytes">Estimated-byte ceiling, or null for no limit.</param>
+        /// <param name="logger">Optional, receives double-release warnings from handles this cache issues.</param>
+        /// <exception cref="ArgumentNullException">Thrown when the estimator or releaser is null.</exception>
+        /// <remarks>
+        /// Both budgets are optional and independent: set either, both, or neither. With neither
+        /// set the cache grows without bound, which is only appropriate for a fixed, known-small
+        /// asset set. Budgets are targets rather than hard caps, since referenced entries are never
+        /// evicted.
+        /// </remarks>
         public RamCache(
             IMemorySizeEstimator sizeEstimator,
             IAssetReleaser releaser,
@@ -38,6 +67,7 @@ namespace SiPV.AssetLoader
             _logger = logger;
         }
 
+        /// <inheritdoc />
         public bool TryGet<T>(string ramKey, out AssetHandle<T> handle)
         {
             if (_entries.TryGetValue(ramKey, out var entry) && entry.CurrentHandle is AssetHandle<T> current)
@@ -53,6 +83,7 @@ namespace SiPV.AssetLoader
             return false;
         }
 
+        /// <inheritdoc />
         public AssetHandle<T> Put<T>(string ramKey, T asset, CacheEntryMetadata metadata)
         {
             var entry = new CacheEntry
@@ -84,6 +115,7 @@ namespace SiPV.AssetLoader
             return handle;
         }
 
+        /// <inheritdoc />
         public void Evict(string ramKey)
         {
             if (!_entries.TryGetValue(ramKey, out var entry))
@@ -100,6 +132,7 @@ namespace SiPV.AssetLoader
             // else: a live handle still exists elsewhere.
         }
 
+        /// <inheritdoc />
         public void TrimToBudget()
         {
             if (!OverBudget())

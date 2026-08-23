@@ -8,7 +8,7 @@ using UnityEngine.TestTools;
 namespace SiPV.AssetLoader.Tests
 {
     // HTTP semantics (ETag/Cache-Control/status mapping) against a fake transport - no real
-    // UnityWebRequest, no network. See docs/step-05-http-source.md for the response mapping table.
+    // UnityWebRequest, no network.
     //
     // [UnityTest] + ToCoroutine() instead of plain [Test] async Task: this project's bundled
     // NUnit doesn't run async Task test methods at all - see AssetLoadPipelineTests.cs for the

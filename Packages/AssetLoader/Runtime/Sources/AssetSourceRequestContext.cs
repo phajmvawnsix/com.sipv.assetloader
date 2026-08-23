@@ -3,24 +3,34 @@ using System.Collections.Generic;
 
 namespace SiPV.AssetLoader
 {
-    // Input to IAssetSource.FetchAsync - request URL plus what's known from a prior cached fetch, so the source can do a conditional GET.
+    /// <summary>
+    /// Input to <see cref="IAssetSource.FetchAsync"/>: the request URL plus what is known from a
+    /// prior cached fetch, so the source can do a conditional GET.
+    /// </summary>
     public readonly struct AssetSourceRequestContext
     {
+        /// <summary>The URL to fetch.</summary>
         public string Url { get; }
 
-        // sent as If-None-Match
+        /// <summary>Sent as <c>If-None-Match</c>, if a prior fetch recorded one.</summary>
         public string ETagIfKnown { get; }
 
-        // sent as If-Modified-Since; fallback for sources without ETag support
+        /// <summary>Sent as <c>If-Modified-Since</c>, fallback for sources without ETag support.</summary>
         public DateTimeOffset? LastModifiedIfKnown { get; }
 
+        /// <summary>Additional headers to send with the request.</summary>
         public IReadOnlyDictionary<string, string> CustomHeaders { get; }
 
+        /// <summary>The timeout policy in effect for this request.</summary>
         public ITimeoutPolicy TimeoutPolicy { get; }
 
-        // from AssetRequest.Priority, for sources that throttle/queue concurrent fetches; default HTTP source may ignore it
+        /// <summary>
+        /// From <see cref="AssetRequest.Priority"/>, for sources that throttle or queue concurrent
+        /// fetches. The default HTTP source ignores it.
+        /// </summary>
         public AssetRequestPriority Priority { get; }
 
+        /// <summary>Creates a source request context.</summary>
         public AssetSourceRequestContext(
             string url,
             string eTagIfKnown,

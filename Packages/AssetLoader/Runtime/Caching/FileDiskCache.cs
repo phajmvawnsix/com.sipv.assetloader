@@ -6,15 +6,27 @@ using Cysharp.Threading.Tasks;
 
 namespace SiPV.AssetLoader
 {
-    // Default IDiskCache. One file per entry at <rootPath>/<diskKey>.bin. Atomic write: write to a
-    // .tmp sibling then File.Move over the final path, so a crash mid-write never leaves a partial
-    // file at the real path. Read failures (missing or corrupt file) are a miss, not a throw - a
-    // corrupt file gets deleted so the next write starts clean.
-    //
-    // TrimToBudgetAsync needs a metadataStore reference even though this class otherwise never
-    // touches metadata (D-13 keeps content and metadata in separate stores) - the interface itself
-    // documents the sweep as LRU over the metadata store's LastAccessUtc, so there's no way to
-    // implement it without one. Kept scoped to that single method.
+    /// <summary>
+    /// File-backed disk cache: one file per entry, at <c>&lt;rootPath&gt;/&lt;diskKey&gt;.bin</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Writes are atomic from a reader's point of view: bytes go to a temporary sibling file first
+    /// and are then moved over the final path in one filesystem operation, so a crash mid-write
+    /// leaves either the old content or the new one, never a truncated file.
+    /// </para>
+    /// <para>
+    /// Read failures are misses rather than exceptions, and a file that fails to read is deleted so
+    /// the next write starts clean. Losing a cache entry is always recoverable by refetching;
+    /// throwing would turn a recoverable state into a failed load.
+    /// </para>
+    /// <para>
+    /// This class deliberately never reads or writes metadata except in
+    /// <see cref="TrimToBudgetAsync"/>, which needs it because the eviction order is defined as
+    /// least-recently-used over the metadata store's timestamps. That is why the constructor takes
+    /// a metadata store despite the two being separate concerns everywhere else.
+    /// </para>
+    /// </remarks>
     public sealed class FileDiskCache : IDiskCache
     {
         private const int BufferSize = 81920;
@@ -23,6 +35,20 @@ namespace SiPV.AssetLoader
         private readonly IDiskCacheMetadataStore _metadataStore;
         private readonly long _budgetBytes;
 
+        /// <summary>Creates a file-backed disk cache, creating the directory if needed.</summary>
+        /// <param name="rootPath">
+        /// Directory for cached files. Must be writable on every target platform, which in practice
+        /// means somewhere under <c>Application.persistentDataPath</c>.
+        /// </param>
+        /// <param name="metadataStore">
+        /// The matching metadata store, used only to order budget evictions. Pass the same instance
+        /// registered with <see cref="AssetLoaderConfigBuilder.UseDiskCache"/>.
+        /// </param>
+        /// <param name="budgetBytes">
+        /// Size ceiling. Checked after each write, evicting oldest-access-first until back inside
+        /// the limit.
+        /// </param>
+        /// <exception cref="ArgumentNullException">Thrown when the path or metadata store is null.</exception>
         public FileDiskCache(string rootPath, IDiskCacheMetadataStore metadataStore, long budgetBytes)
         {
             _rootPath = rootPath ?? throw new ArgumentNullException(nameof(rootPath));
@@ -31,6 +57,7 @@ namespace SiPV.AssetLoader
             Directory.CreateDirectory(_rootPath);
         }
 
+        /// <inheritdoc />
         public async UniTask<DiskCacheReadResult> TryReadAsync(string diskKey, CancellationToken cancellationToken)
         {
             var path = PathFor(diskKey);
@@ -44,9 +71,9 @@ namespace SiPV.AssetLoader
             {
                 using var stream = new FileStream(
                     path, FileMode.Open, FileAccess.Read, FileShare.Read, BufferSize, useAsync: true);
-                // TODO: allocates the whole file in one array. Fine for textures/audio at typical
-                // sizes, but a multi-GB entry would be a multi-GB single allocation. Revisit if
-                // cache budgets (still undecided) ever allow entries that large.
+                // TODO: allocates the whole file in one array. Fine for textures and audio at
+                // typical sizes, but a single huge entry would be one huge allocation. Would need a
+                // streaming read path if the package ever has to handle entries that large.
                 var buffer = new byte[stream.Length];
                 var offset = 0;
 
@@ -80,9 +107,13 @@ namespace SiPV.AssetLoader
             }
         }
 
-        // Concurrent WriteAsync calls for the same diskKey aren't guarded here - relies on
-        // IInFlightRequestCoordinator upstream already deduplicating concurrent loads of the same
-        // key, so two writers racing the same .tmp path shouldn't happen through the pipeline.
+        /// <inheritdoc />
+        /// <remarks>
+        /// Concurrent writes to the same key are not guarded here. The pipeline deduplicates
+        /// concurrent loads of a key upstream, so two writers never race the same temporary path
+        /// when going through the loader. Calling this class directly from several places at once
+        /// would need your own coordination.
+        /// </remarks>
         public async UniTask WriteAsync(string diskKey, byte[] content, CancellationToken cancellationToken)
         {
             var path = PathFor(diskKey);
@@ -128,12 +159,14 @@ namespace SiPV.AssetLoader
             }
         }
 
+        /// <inheritdoc />
         public UniTask EvictAsync(string diskKey, CancellationToken cancellationToken)
         {
             TryDelete(PathFor(diskKey));
             return UniTask.CompletedTask;
         }
 
+        /// <inheritdoc />
         public UniTask<long> GetTotalSizeBytesAsync(CancellationToken cancellationToken)
         {
             long total = 0;
@@ -146,6 +179,7 @@ namespace SiPV.AssetLoader
             return UniTask.FromResult(total);
         }
 
+        /// <inheritdoc />
         public async UniTask TrimToBudgetAsync(CancellationToken cancellationToken)
         {
             var total = await GetTotalSizeBytesAsync(cancellationToken);

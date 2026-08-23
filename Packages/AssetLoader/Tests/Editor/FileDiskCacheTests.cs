@@ -87,8 +87,8 @@ namespace SiPV.AssetLoader.Tests
         public IEnumerator MissingContentFile_TreatedAsMissNotThrow() => RunAsync(async () =>
         {
             // metadata says this entry exists (e.g. disk content was cleared out from under the
-            // metadata store - the exact drift scenario D-13's split risks) - TryReadAsync must not
-            // throw just because the metadata store thinks otherwise.
+            // metadata store - the exact drift risk of keeping content/metadata as separate
+            // stores) - TryReadAsync must not throw just because the metadata store thinks otherwise.
             var metadataStore = new FileDiskCacheMetadataStore(_root);
             var diskCache = new FileDiskCache(_root, metadataStore, budgetBytes: long.MaxValue);
             var metadata = new CacheEntryMetadata("etag-1", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, 4, "text/plain");

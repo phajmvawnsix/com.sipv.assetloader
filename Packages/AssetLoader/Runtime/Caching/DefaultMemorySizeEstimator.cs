@@ -2,15 +2,22 @@ using UnityEngine;
 
 namespace SiPV.AssetLoader
 {
-    // Default IMemorySizeEstimator. Deliberately rough:
-    //   Texture2D  -> width * height * 4 (relative number, not 100% accurate, but good enough to avoid OOMs)
-    //   AudioClip  -> samples * channels * 4 (assumes float PCM in memory, same caveat)
-    //   byte[]     -> exact length
-    //   string     -> Length * 2 (default as UTF-16)
-    //   anything else -> 1, so it still counts toward an entry-count budget without dominating a
-    //                 byte budget it can't meaningfully estimate
+    /// <summary>
+    /// Rough size estimates for the common asset types, good enough to keep a cache budget honest
+    /// without walking object graphs.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately approximate. A texture is counted as width times height times 4 bytes, ignoring
+    /// compression and mip levels; an audio clip as samples times channels times 4, assuming float
+    /// PCM. Both can be off by a factor for compressed assets, but they are proportional to real
+    /// cost, which is what a budget needs. Byte arrays and strings are exact. Anything else counts
+    /// as 1 byte, so it still contributes to an entry-count budget without distorting a byte
+    /// budget it cannot meaningfully estimate: register your own
+    /// <see cref="IMemorySizeEstimator"/> if that matters for your type.
+    /// </remarks>
     public sealed class DefaultMemorySizeEstimator : IMemorySizeEstimator
     {
+        /// <inheritdoc />
         public long EstimateBytes<T>(T asset)
         {
             switch (asset)

@@ -7,13 +7,22 @@ using UnityEngine;
 
 namespace SiPV.AssetLoader
 {
-    // Default IDiskCacheMetadataStore. One sidecar .json file per entry, same rootPath and diskKey
-    // as FileDiskCache's content files (different extension) - a crash writing one entry's metadata
-    // can't corrupt any other entry's, which a single shared manifest file would risk.
-    //
-    // Metadata JSON is tiny (a few hundred bytes), so plain synchronous File IO is used here rather
-    // than FileDiskCache's manual async FileStream dance - still runs on the thread pool per the
-    // interface contract, just not worth the extra ceremony for reads/writes this small.
+    /// <summary>
+    /// File-backed metadata store: one sidecar JSON file per entry, sharing the directory and key
+    /// with <see cref="FileDiskCache"/>'s content files but using a different extension.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sidecar files rather than one shared manifest, so a crash while writing one entry's metadata
+    /// cannot corrupt any other entry's. The cost is more files on disk, which is a good trade for
+    /// the isolation.
+    /// </para>
+    /// <para>
+    /// Each record is a few hundred bytes, so this uses plain synchronous file I/O rather than the
+    /// async streaming the content store needs. It still runs on the thread pool as the interface
+    /// requires; the extra ceremony just would not buy anything at this size.
+    /// </para>
+    /// </remarks>
     public sealed class FileDiskCacheMetadataStore : IDiskCacheMetadataStore
     {
         [Serializable]
@@ -30,12 +39,19 @@ namespace SiPV.AssetLoader
 
         private readonly string _rootPath;
 
+        /// <summary>Creates a metadata store, creating the directory if needed.</summary>
+        /// <param name="rootPath">
+        /// Directory for the sidecar files. Pass the same path given to the
+        /// <see cref="FileDiskCache"/> it accompanies so a cache wipe is one folder delete.
+        /// </param>
+        /// <exception cref="ArgumentNullException">Thrown when <paramref name="rootPath"/> is null.</exception>
         public FileDiskCacheMetadataStore(string rootPath)
         {
             _rootPath = rootPath ?? throw new ArgumentNullException(nameof(rootPath));
             Directory.CreateDirectory(_rootPath);
         }
 
+        /// <inheritdoc />
         public UniTask<CacheEntryMetadata?> GetAsync(string diskKey, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -59,8 +75,11 @@ namespace SiPV.AssetLoader
             }
         }
 
-        // Concurrent SetAsync calls for the same diskKey aren't guarded here, same assumption as
-        // FileDiskCache.WriteAsync - relies on the dedup coordinator upstream.
+        /// <inheritdoc />
+        /// <remarks>
+        /// Concurrent calls for the same key are not guarded here, same assumption as
+        /// <see cref="FileDiskCache.WriteAsync"/>: relies on the dedup coordinator upstream.
+        /// </remarks>
         public UniTask SetAsync(string diskKey, CacheEntryMetadata metadata, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -91,12 +110,14 @@ namespace SiPV.AssetLoader
             return UniTask.CompletedTask;
         }
 
+        /// <inheritdoc />
         public UniTask RemoveAsync(string diskKey, CancellationToken cancellationToken)
         {
             TryDelete(PathFor(diskKey));
             return UniTask.CompletedTask;
         }
 
+        /// <inheritdoc />
         public UniTask<IReadOnlyList<(string Key, CacheEntryMetadata Metadata)>> GetAllAsync(CancellationToken cancellationToken)
         {
             var list = new List<(string, CacheEntryMetadata)>();

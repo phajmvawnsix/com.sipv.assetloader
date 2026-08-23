@@ -54,9 +54,11 @@ namespace SiPV.AssetLoader
                 }
 
                 var clip = DownloadHandlerAudioClip.GetContent(webRequest);
-                if (clip == null)
+
+                // GetContent doesn't return null on a native decode failure.
+                if (clip == null || clip.samples <= 0)
                 {
-                    throw new AssetLoadException(AssetLoadErrorCode.DecodeFailed, context.Url, "AudioClipDecoder: DownloadHandlerAudioClip returned null, audio bytes are invalid or corrupt.");
+                    throw new AssetLoadException(AssetLoadErrorCode.DecodeFailed, context.Url, "AudioClipDecoder: audio bytes are invalid or corrupt (native decode failed).");
                 }
 
                 return clip;

@@ -15,6 +15,6 @@ namespace SiPV.AssetLoader
 
         // Must run in a finally, including on the failure path, or the key stays wedged as in-flight
         // and every later load of it awaits a source that never resolves.
-        void Complete(string ramKey);
+        void Complete<T>(string ramKey, UniTaskCompletionSource<AssetHandle<T>> completionSource);
     }
 }

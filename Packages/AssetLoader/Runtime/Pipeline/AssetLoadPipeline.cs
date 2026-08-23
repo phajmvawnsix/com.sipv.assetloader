@@ -38,10 +38,10 @@ namespace SiPV.AssetLoader
             var completionSource = _coordinator.Register<T>(ramKey, cancellationToken, out var sharedToken);
 
 
-            var workTask = LoadAndCacheAsync<T>(request, ramKey, sharedToken).Preserve();
+            var workTask = LoadAndCacheAsync<T>(request, ramKey, sharedToken);
             ResolveForCoalescers(workTask, completionSource, ramKey).Forget();
 
-            return await AwaitOwnCancellation(workTask, cancellationToken);
+            return await AwaitOwnCancellation(completionSource.Task, cancellationToken);
         }
         
         private async UniTaskVoid ResolveForCoalescers<T>(
@@ -65,7 +65,7 @@ namespace SiPV.AssetLoader
             }
             finally
             {
-                _coordinator.Complete(ramKey);
+                _coordinator.Complete(ramKey, completionSource);
             }
         }
         

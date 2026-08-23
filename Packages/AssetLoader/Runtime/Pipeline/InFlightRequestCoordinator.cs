@@ -38,7 +38,9 @@ namespace SiPV.AssetLoader
 
         public bool TryGetExisting<T>(string ramKey, CancellationToken callerToken, out UniTask<AssetHandle<T>> existing)
         {
-            if (_inFlight.TryGetValue(ramKey, out var entry) && entry.CompletionSource is UniTaskCompletionSource<AssetHandle<T>> source)
+            if (_inFlight.TryGetValue(ramKey, out var entry)
+                && !entry.SharedCts.IsCancellationRequested
+                && entry.CompletionSource is UniTaskCompletionSource<AssetHandle<T>> source)
             {
                 Join(entry, callerToken);
                 existing = source.Task;
@@ -49,15 +51,15 @@ namespace SiPV.AssetLoader
             return false;
         }
 
-        public void Complete(string ramKey)
+        public void Complete<T>(string ramKey, UniTaskCompletionSource<AssetHandle<T>> completionSource)
         {
-            if (!_inFlight.TryGetValue(ramKey, out var entry))
+            if (!_inFlight.TryGetValue(ramKey, out var entry) || !ReferenceEquals(entry.CompletionSource, completionSource))
             {
                 return;
             }
 
             _inFlight.Remove(ramKey);
-            
+
             foreach (var registration in entry.Registrations)
             {
                 registration.Dispose();

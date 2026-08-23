@@ -34,7 +34,7 @@ namespace SiPV.AssetLoader
                 return BuildOkResult(response);
             }
 
-            return Failed(context.Url, $"HTTP {response.StatusCode}");
+            return Failed(context.Url, $"HTTP {response.StatusCode}", (int)response.StatusCode);
         }
 
         private static IReadOnlyDictionary<string, string> BuildRequestHeaders(AssetSourceRequestContext context)
@@ -84,9 +84,9 @@ namespace SiPV.AssetLoader
             return new AssetSourceResult(AssetSourceStatus.Ok200, response.Body, eTag, maxAge, DateTimeOffset.UtcNow, contentType);
         }
 
-        private static AssetSourceResult Failed(string url, string message) => new AssetSourceResult(
+        private static AssetSourceResult Failed(string url, string message, int? httpStatusCode = null) => new AssetSourceResult(
             AssetSourceStatus.Failed, null, null, null, DateTimeOffset.UtcNow, null,
-            new AssetLoadException(AssetLoadErrorCode.FetchFailed, url, message));
+            new AssetLoadException(AssetLoadErrorCode.FetchFailed, url, message, httpStatusCode: httpStatusCode));
         
         private static TimeSpan? ParseMaxAge(string cacheControl)
         {

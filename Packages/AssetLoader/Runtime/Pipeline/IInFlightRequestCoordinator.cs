@@ -9,9 +9,9 @@ namespace SiPV.AssetLoader
     {
         // Marks ramKey as in-flight; caller resolves the returned source when the pipeline finishes.
         // Only call after TryGetExisting confirms nothing's already registered.
-        UniTaskCompletionSource<AssetHandle<T>> Register<T>(string ramKey);
+        UniTaskCompletionSource<AssetHandle<T>> Register<T>(string ramKey, CancellationToken callerToken, out CancellationToken sharedToken);
 
-        bool TryGetExisting<T>(string ramKey, out UniTask<AssetHandle<T>> existing);
+        bool TryGetExisting<T>(string ramKey, CancellationToken callerToken, out UniTask<AssetHandle<T>> existing);
 
         // Must run in a finally, including on the failure path, or the key stays wedged as in-flight
         // and every later load of it awaits a source that never resolves.

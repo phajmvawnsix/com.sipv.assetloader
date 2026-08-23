@@ -28,20 +28,28 @@ namespace SiPV.AssetLoader
                 return ramHandle;
             }
 
-            if (_coordinator.TryGetExisting<T>(ramKey, out var existing))
+            if (_coordinator.TryGetExisting<T>(ramKey, cancellationToken, out var existing))
             {
                 _config.EventSink.Report(new AssetLoaderEvent(AssetLoaderEventKind.DedupCoalesced, ramKey));
-                var sharedHandle = await existing;
+                var sharedHandle = await AwaitOwnCancellation(existing, cancellationToken);
                 return sharedHandle.Retain();
             }
 
-            var completionSource = _coordinator.Register<T>(ramKey);
+            var completionSource = _coordinator.Register<T>(ramKey, cancellationToken, out var sharedToken);
 
+
+            var workTask = LoadAndCacheAsync<T>(request, ramKey, sharedToken).Preserve();
+            ResolveForCoalescers(workTask, completionSource, ramKey).Forget();
+
+            return await AwaitOwnCancellation(workTask, cancellationToken);
+        }
+        
+        private async UniTaskVoid ResolveForCoalescers<T>(
+            UniTask<AssetHandle<T>> workTask, UniTaskCompletionSource<AssetHandle<T>> completionSource, string ramKey)
+        {
             try
             {
-                var handle = await LoadAndCacheAsync<T>(request, ramKey, cancellationToken);
-                completionSource.TrySetResult(handle);
-                return handle;
+                completionSource.TrySetResult(await workTask);
             }
             catch (Exception ex)
             {
@@ -54,14 +62,15 @@ namespace SiPV.AssetLoader
                 catch
                 {
                 }
-
-                throw;
             }
             finally
             {
                 _coordinator.Complete(ramKey);
             }
         }
+        
+        private static UniTask<AssetHandle<T>> AwaitOwnCancellation<T>(UniTask<AssetHandle<T>> task, CancellationToken callerToken) =>
+            task.AttachExternalCancellation(callerToken);
 
         public async UniTask PreloadAsync(AssetRequest request, CancellationToken cancellationToken)
         {
@@ -250,7 +259,10 @@ namespace SiPV.AssetLoader
             Func<CancellationToken, UniTask<TResult>> operation)
         {
             var retryPolicy = request.RetryPolicyOverride ?? _config.DefaultRetryPolicy;
-            var timeout = (request.TimeoutPolicyOverride ?? _config.DefaultTimeoutPolicy).GetTimeout(request);
+            var timeoutPolicy = request.TimeoutPolicyOverride ?? _config.DefaultTimeoutPolicy;
+            var timeout = timeoutPolicy.GetTimeout(request);
+            var overallDeadline = timeoutPolicy.GetOverallDeadline(request);
+            var startedAt = DateTimeOffset.UtcNow;
             var attempt = 1;
 
             while (true)
@@ -284,6 +296,12 @@ namespace SiPV.AssetLoader
                             ? fetchFailure
                             : new AssetLoadException(ErrorCodeFor(stage), ramKey, ex.Message, ex);
                     }
+                }
+
+                if (overallDeadline.HasValue && DateTimeOffset.UtcNow - startedAt >= overallDeadline.Value)
+                {
+                    throw new AssetLoadException(
+                        AssetLoadErrorCode.TimedOut, ramKey, $"{stage} exceeded overall deadline of {overallDeadline.Value} across retries.");
                 }
 
                 await UniTask.Delay(retryDelay.Value, cancellationToken: cancellationToken);

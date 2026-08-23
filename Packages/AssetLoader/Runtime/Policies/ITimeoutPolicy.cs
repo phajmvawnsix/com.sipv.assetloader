@@ -7,5 +7,8 @@ namespace SiPV.AssetLoader
     {
         // Called once before the first attempt; not re-evaluated between retries.
         TimeSpan GetTimeout(in AssetRequest request);
+
+        // Optional wall-clock cap across every attempt combined, checked before each retry.
+        TimeSpan? GetOverallDeadline(in AssetRequest request);
     }
 }

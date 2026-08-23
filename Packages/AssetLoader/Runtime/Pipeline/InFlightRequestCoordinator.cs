@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using Cysharp.Threading.Tasks;
 
 namespace SiPV.AssetLoader
@@ -8,19 +9,38 @@ namespace SiPV.AssetLoader
     // interface contract, so no lock needed for check-then-register.
     internal sealed class InFlightRequestCoordinator : IInFlightRequestCoordinator
     {
-        private readonly Dictionary<string, object> _inFlight = new Dictionary<string, object>();
+        private sealed class Entry
+        {
+            public object CompletionSource;
+            public CancellationTokenSource SharedCts;
+            public int ActiveParticipants;
+            public bool HasUncancellableParticipant;
+            public readonly List<CancellationTokenRegistration> Registrations = new List<CancellationTokenRegistration>();
+        }
 
-        public UniTaskCompletionSource<AssetHandle<T>> Register<T>(string ramKey)
+        private readonly Dictionary<string, Entry> _inFlight = new Dictionary<string, Entry>();
+
+        public UniTaskCompletionSource<AssetHandle<T>> Register<T>(string ramKey, CancellationToken callerToken, out CancellationToken sharedToken)
         {
             var source = new UniTaskCompletionSource<AssetHandle<T>>();
-            _inFlight[ramKey] = source;
+            var entry = new Entry
+            {
+                CompletionSource = source,
+                SharedCts = new CancellationTokenSource()
+            };
+
+            _inFlight[ramKey] = entry;
+            Join(entry, callerToken);
+
+            sharedToken = entry.SharedCts.Token;
             return source;
         }
 
-        public bool TryGetExisting<T>(string ramKey, out UniTask<AssetHandle<T>> existing)
+        public bool TryGetExisting<T>(string ramKey, CancellationToken callerToken, out UniTask<AssetHandle<T>> existing)
         {
-            if (_inFlight.TryGetValue(ramKey, out var boxed) && boxed is UniTaskCompletionSource<AssetHandle<T>> source)
+            if (_inFlight.TryGetValue(ramKey, out var entry) && entry.CompletionSource is UniTaskCompletionSource<AssetHandle<T>> source)
             {
+                Join(entry, callerToken);
                 existing = source.Task;
                 return true;
             }
@@ -31,7 +51,37 @@ namespace SiPV.AssetLoader
 
         public void Complete(string ramKey)
         {
+            if (!_inFlight.TryGetValue(ramKey, out var entry))
+            {
+                return;
+            }
+
             _inFlight.Remove(ramKey);
+            
+            foreach (var registration in entry.Registrations)
+            {
+                registration.Dispose();
+            }
+
+            entry.SharedCts.Dispose();
+        }
+
+        private static void Join(Entry entry, CancellationToken callerToken)
+        {
+            if (!callerToken.CanBeCanceled)
+            {
+                entry.HasUncancellableParticipant = true;
+                return;
+            }
+
+            Interlocked.Increment(ref entry.ActiveParticipants);
+            entry.Registrations.Add(callerToken.Register(() =>
+            {
+                if (Interlocked.Decrement(ref entry.ActiveParticipants) <= 0 && !entry.HasUncancellableParticipant)
+                {
+                    entry.SharedCts.Cancel();
+                }
+            }));
         }
     }
 }

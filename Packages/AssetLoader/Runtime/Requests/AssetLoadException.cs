@@ -14,11 +14,17 @@ namespace SiPV.AssetLoader
         // resolved cache seed, not the raw URL - safe to log, already includes the variant
         public string RequestKey { get; }
 
-        public AssetLoadException(AssetLoadErrorCode errorCode, string requestKey, string message, Exception innerException = null)
+        // set only when ErrorCode is FetchFailed and the failure was a real HTTP response.
+        public int? HttpStatusCode { get; }
+
+        public AssetLoadException(
+            AssetLoadErrorCode errorCode, string requestKey, string message,
+            Exception innerException = null, int? httpStatusCode = null)
             : base(message, innerException)
         {
             ErrorCode = errorCode;
             RequestKey = requestKey;
+            HttpStatusCode = httpStatusCode;
         }
     }
 }

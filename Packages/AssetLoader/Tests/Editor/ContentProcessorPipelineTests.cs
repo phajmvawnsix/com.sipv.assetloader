@@ -73,7 +73,7 @@ namespace SiPV.AssetLoader.Tests
         [UnityTest]
         public IEnumerator XorProcessor_AppliedTwiceWithSameKey_RoundTripsToOriginal() => RunAsync(async () =>
         {
-            // Same shape as Samples~/CustomDecryptSample/XorContentProcessor.cs (that folder is
+            // Same shape as Samples~/Demo/Extensibility/XorContentProcessor.cs (Samples~ is
             // ignored by Unity's asset database due to the trailing "~", so it can't be referenced
             // by an asmdef here - this proves the algorithm the sample documents actually round-trips).
             var original = System.Text.Encoding.UTF8.GetBytes("round trip me");

@@ -21,19 +21,9 @@
   },
   "samples": [
     {
-      "displayName": "Custom Loader",
-      "description": "Registers a decoder for a made-up asset type from outside the package, proving Open/Closed extensibility.",
-      "path": "Samples~/CustomLoaderSample"
-    },
-    {
-      "displayName": "Custom Decrypt",
-      "description": "Adds an XOR content processor to the fetch/decode chain (production should use AES).",
-      "path": "Samples~/CustomDecryptSample"
-    },
-    {
-      "displayName": "Custom Policy",
-      "description": "A single-retry-no-backoff IRetryPolicy, usable globally or per-request.",
-      "path": "Samples~/CustomPolicySample"
+      "displayName": "Demo",
+      "description": "Interactive OnGUI scene proving cache tiers, dedup, custom runtime input, and all 3 Open/Closed extensibility points (custom decoder, processor, policy) live against the real pipeline. No setup needed.",
+      "path": "Samples~/Demo"
     }
   ]
 }

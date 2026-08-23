@@ -5,6 +5,7 @@
     "com.sipvlib.debugging": "https://github.com/phajmvawnsix/com.sipvlib.debugging.git",
     "com.sipvlib.event": "https://github.com/phajmvawnsix/com.sipvlib.event.git",
     "com.unity.ide.rider": "3.0.40",
+    "com.unity.test-framework": "1.1.33",
     "com.unity.modules.ai": "1.0.0",
     "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.animation": "1.0.0",
